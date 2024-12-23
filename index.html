@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title></title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      #game {
+	  position: absolute;
+	  top: 50%;
+	  left: 50%;
+	  transform: translate(-50%, -50%);
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="game"></canvas>
+    <h3>Controls</h3>
+    <script type="text/javascript" src="odin.js"></script>
+    <script type="text/javascript">
+      const wasmMemoryInterface = new odin.WasmMemoryInterface();
+
+      function initialize(wasmMemoryInterface) {
+	  return {
+	      "odin_setup": {
+		  set_canvas_size: (name_ptr, name_len, width, height) => {
+		      const name = wasmMemoryInterface.loadString(name_ptr, name_len);
+		      const canvas = document.getElementById(name);
+		      canvas.width = width;
+		      canvas.height = height;
+		  },
+		  load_asset: (name_ptr, name_len, size_ptr) => {
+		      const name = wasmMemoryInterface.loadString(name_ptr, name_len);
+		      const asset = assets[name];
+		      if (asset === null) {
+			  throw new Error("ERROR: could not find:", name);
+		      }
+		      const ptr = wasmMemoryInterface.exports.allocate_bytes(asset.length);
+		      const memory = wasmMemoryInterface.loadBytes(ptr, asset.length);
+		      wasmMemoryInterface.storeInt(size_ptr, asset.length);
+		      memory.set(asset);
+		      return ptr;
+		  }
+	      },
+	  }
+      }
+
+      odin.runWasm("main.wasm", {}, initialize(wasmMemoryInterface), wasmMemoryInterface);
+    </script>
+  </body>
+</html
