@@ -217,9 +217,10 @@ io_fini :: proc() {
 
     g_ctx.io.key_pressed_count_per_frame = {}
 
-    when ODIN_OS != .JS {
-        g_ctx.platform_data.char_pressed_queue_count = 0
-    }
+    // TODO: check how useful this is
+    //when ODIN_OS != .JS {
+    //    g_ctx.platform_data.char_pressed_queue_count = 0
+    //}
 
     if g_ctx.io.full_reset {
         g_ctx.io.key_released  = g_ctx.io.key_down
