@@ -67,6 +67,11 @@ main :: proc() {
 }
 ```
 
+## Demonstrations
+
+To see Insula in action, you can try our online game demo:
+- [Spacebattle](https://spad0n.github.io/avalon-demo): A port of my game Spacebattle, originally written in C using SDL2, now powered by Insula.
+
 ## Roadmap
 Here are the planned steps for the project's development:
 1. Add missing OpenGL/WebGL bindings in Ogygia
