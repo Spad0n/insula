@@ -1,300 +1,267 @@
-#+build !js
 package sirenuse
 
-import    "base:runtime"
 import ma "vendor:miniaudio"
-import    "core:mem"
+import    "core:sync"
 import    "core:fmt"
-//import    "core:c/libc"
+import    "core:mem"
 
-AUDIO_DEVICE_FORMAT      :: ma.format.f32
-AUDIO_DEVICE_CHANNELS    :: 2
-AUDIO_DEVICE_SAMPLE_RATE :: 48000
+AUDIO_DEVICE_CHANNELS    : u32       : 2
+AUDIO_DEVICE_SAMPLE_RATE : u32       : 44100
+AUDIO_DEVICE_FORMAT      : ma.format : .f32
 
-Audio_Buffer :: struct {
-    //buffer: ma.audio_buffer,
-    buffer: ma.decoder,
-    volume: f32,
-    pan: f32,
-    pitch: f32,
-    playing: bool,
-    paused: bool,
-    frame_cursor_pos: uint,
-    next: ^Audio_Buffer,
-    prev: ^Audio_Buffer
-}
 
-Audio_Data :: struct {
-    system: struct {
-        device: ma.device,
-        lock: ma.mutex,
-        is_ready: bool,
-    },
-    buffer: struct {
-        first: ^Audio_Buffer,
-        last: ^Audio_Buffer,
-    }
-}
-
-ctx: Audio_Data
-
-read_and_mix_pcm_frames_f32 :: proc(decoder: ^ma.decoder, output_f32: [^]f32, frame_count: u32) -> u32 {
-    temp: [4096]f32
-    temp_cap_in_frames : u32 = len(temp) / AUDIO_DEVICE_CHANNELS
-    total_frames_read : u32 = 0
-
-    for total_frames_read < frame_count {
-        frames_read_this_iteration: u64
-        total_frames_remaining := frame_count - total_frames_read
-        frames_to_read_this_iteration := temp_cap_in_frames
-
-        if frames_to_read_this_iteration > total_frames_remaining {
-            frames_to_read_this_iteration = total_frames_remaining
-        }
-
-        if ma.decoder_read_pcm_frames(decoder, &temp[0], u64(frames_to_read_this_iteration), &frames_read_this_iteration) != .SUCCESS || frames_read_this_iteration == 0 {
-            break
-        }
-        //if frames_read_this_iteration == 0 do break
-        //ma.audio_buffer_read_pcm_frames(audio, &temp[0], u64(frames_to_read_this_iteration), false)
-
-        // Mix the frames together
-        for isample in 0..<frames_read_this_iteration * AUDIO_DEVICE_CHANNELS {
-            output_f32[total_frames_read * AUDIO_DEVICE_CHANNELS + u32(isample)] += temp[isample]
-        }
-
-        total_frames_read += u32(frames_read_this_iteration)
-
-        if frames_read_this_iteration < u64(frames_to_read_this_iteration) {
-            break
-        }
-    }
-    return total_frames_read
-}
-
-data_callback :: proc "c" (device: ^ma.device, output: rawptr, input: rawptr, frame_count: u32) {
-    context = runtime.default_context()
-    output_f32 := cast([^]f32)(output)
-
-    ma.mutex_lock(&ctx.system.lock)
-    defer ma.mutex_unlock(&ctx.system.lock)
-
-    for audio_buffer := ctx.buffer.first; audio_buffer != nil; audio_buffer = audio_buffer.next {
-        if (!audio_buffer.playing || audio_buffer.paused) do continue
-        
-        frames_read := read_and_mix_pcm_frames_f32(&audio_buffer.buffer, output_f32, frame_count)
-        if frames_read < frame_count {
-            audio_buffer.paused = true
-        }
-    }
-}
-
-init :: proc() {
-    config := ma.device_config_init(.playback)
-    config.playback.format = AUDIO_DEVICE_FORMAT
-    config.playback.channels = AUDIO_DEVICE_CHANNELS
-    config.sampleRate = AUDIO_DEVICE_SAMPLE_RATE
-    config.dataCallback = data_callback
-    config.pUserData = nil
-
-    if ma.device_init(nil, &config, &ctx.system.device) != .SUCCESS {
-        panic("Failed to initialize playback device")
-    }
-
-    if ma.device_start(&ctx.system.device) != .SUCCESS {
-        panic("Failed to start playback device")
-    }
-
-    if ma.mutex_init(&ctx.system.lock) != .SUCCESS {
-        panic("Failed to create mutex for mixing")
-    }
-}
-
-destroy :: proc() {
-    if ctx.system.is_ready {
-        ma.mutex_uninit(&ctx.system.lock)
-        ma.device_uninit(&ctx.system.device)
-
-        ctx.system.is_ready = false
-    }
-    for ctx.buffer.first != nil {
-        tmp := ctx.buffer.first
-        ctx.buffer.first = ctx.buffer.first.next
-        ma.decoder_uninit(&tmp.buffer)
-        free(tmp)
-    }
-}
-
-load_sound :: proc(filename: cstring) -> ^Audio_Buffer {
-    decoder_config := ma.decoder_config_init(AUDIO_DEVICE_FORMAT, AUDIO_DEVICE_CHANNELS, AUDIO_DEVICE_SAMPLE_RATE)
-
-    audio_node := new(Audio_Buffer)
-    if ma.decoder_init_file(filename, &decoder_config, &audio_node.buffer) != .SUCCESS {
-        fmt.panicf("Failed to load: %s\n", filename)
-    }
-
-    audio_node.volume = 1
-    audio_node.pitch = 1
-    audio_node.pan = 0.5
-
-    if ctx.buffer.first == nil {
-        ctx.buffer.first = audio_node
-        ctx.buffer.last = audio_node
-    } else {
-        ctx.buffer.last.next = audio_node
-        audio_node.prev = ctx.buffer.last
-        ctx.buffer.last = audio_node
-    }
-
-    return audio_node
-}
-
-play_sound :: proc(audio_buffer: ^Audio_Buffer) {
-    audio_buffer.playing = true
-    audio_buffer.paused = false
-    audio_buffer.frame_cursor_pos = 0
-    ma.decoder_seek_to_pcm_frame(&audio_buffer.buffer, 0)
-}
-
-//Audio_Buffer_Usage :: enum {
-//    Static,
-//    Stream,
-//}
-//
 //Audio_Buffer :: struct {
-//    playing: bool,
-//    paused: bool,
-//    frame_cursor_pos: uint,
 //    decoder: ma.decoder,
-//    next: ^Audio_Buffer,
-//    prev: ^Audio_Buffer,
+//    paused: bool,
+//    looping: bool,
 //}
 //
-//Audio_Data :: struct {
+//AudioData :: struct {
 //    device: ma.device,
-//    lock: ma.mutex,
+//    buffer: Audio_Buffer,
 //    is_ready: bool,
-//    first: ^Audio_Buffer,
-//    last: ^Audio_Buffer,
-//    default_size: int,
+//    lock: sync.Mutex
 //}
 //
-//ctx: Audio_Data
+//@(private) AUDIO: AudioData
 //
-//read_and_mix_pcm_frames_f32 :: proc(decoder: ^ma.decoder, output_f32: [^]f32, frame_count: u32) -> u32 {
-//    temp: [4096]f32
-//    temp_cap_in_frames : u32 = len(temp) / AUDIO_DEVICE_CHANNELS
-//    total_frames_read : u32 = 0
+//data_callback :: proc(device: ^ma.device, output, input: rawptr, frame_count: u64) {
+//    sync.mutex_lock(&AUDIO.lock)
+//    {
+//        if (AUDIO.buffer.paused) do return
 //
-//    for total_frames_read < frame_count {
-//        frames_read_this_iteration: u64
-//        total_frames_remaining := frame_count - total_frames_read
-//        frames_to_read_this_iteration := temp_cap_in_frames
+//        frames_read: u64
 //
-//        if frames_to_read_this_iteration > total_frames_remaining {
-//            frames_to_read_this_iteration = total_frames_remaining
-//        }
+//        ma.decoder_read_pcm_frames(&AUDIO.buffer.decoder, output, frame_count, &frames_read)
 //
-//        if ma.decoder_read_pcm_frames(decoder, &temp[0], u64(frames_to_read_this_iteration), &frames_read_this_iteration) != .SUCCESS || frames_read_this_iteration == 0 {
-//            break
-//        }
-//
-//        // Mix the frames together
-//        for isample in 0..<frames_read_this_iteration * AUDIO_DEVICE_CHANNELS {
-//            output_f32[total_frames_read * AUDIO_DEVICE_CHANNELS + u32(isample)] += temp[isample]
-//        }
-//
-//        total_frames_read += u32(frames_read_this_iteration)
-//
-//        if frames_read_this_iteration < u64(frames_to_read_this_iteration) {
-//            break
+//        // check if need to be looped
+//        if frames_read < frame_count && AUDIO.buffer.looping {
+//            ma.decoder_seek_to_pcm_frame(&AUDIO.buffer.decoder, 0)
 //        }
 //    }
-//    return total_frames_read
+//    sync.mutex_unlock(&AUDIO.lock)
 //}
 //
-//data_callback :: proc "c" (device: ^ma.device, output: rawptr, input: rawptr, frame_count: u32) {
-//    context = runtime.default_context()
-//
-//    //mem.set(output, 0, frame_count * device.playback.channels * ma.get_bytes_per_sample(device.playback.format))
-//    output_f32 := ([^]f32)(output)
-//
-//    ma.mutex_lock(&ctx.lock)
-//    defer ma.mutex_unlock(&ctx.lock)
-//
-//    for audio_buffer := ctx.first; audio_buffer != nil; audio_buffer = audio_buffer.next {
-//        if (!audio_buffer.playing || audio_buffer.paused) do continue
-//        frames_read := read_and_mix_pcm_frames_f32(&audio_buffer.decoder, output_f32, frame_count)
-//        if frames_read < frame_count {
-//            audio_buffer.paused = true
-//        }
+//init :: proc(file_path: cstring) {
+//    // decoder part
+//    if ma.decoder_init_file(file_path, nil, &AUDIO.buffer.decoder) != .SUCCESS {
+//        panic("Could not load file")
 //    }
-//}
 //
-//init :: proc() {
+//    // device part
 //    config := ma.device_config_init(.playback)
 //    config.playback.format = AUDIO_DEVICE_FORMAT
 //    config.playback.channels = AUDIO_DEVICE_CHANNELS
-//    config.capture.channels = 1
 //    config.sampleRate = AUDIO_DEVICE_SAMPLE_RATE
-//    config.dataCallback = data_callback
-//    config.pUserData = nil
+//    config.dataCallback = ma.device_data_proc(data_callback)
 //
-//    if ma.device_init(nil, &config, &ctx.device) != .SUCCESS {
-//        panic("Failed to initialize playback device")
+//    if ma.device_init(nil, &config, &AUDIO.device) != .SUCCESS {
+//        panic("AUDIO: Failed to initialize playback device")
 //    }
 //
-//    if ma.device_start(&ctx.device) != .SUCCESS {
-//        panic("Failed to start playback device")
+//    if ma.device_start(&AUDIO.device) != .SUCCESS {
+//        panic("AUDIO: Failed to start playback device")
 //    }
 //
-//    if ma.mutex_init(&ctx.lock) != .SUCCESS {
-//        panic("Failed to create mutex for mixing")
-//    }
-//
-//    ctx.first = new(Audio_Buffer)
-//    ctx.first.next = new(Audio_Buffer)
-//    ctx.last = ctx.first.next
-//
-//    decoder_config := ma.decoder_config_init(AUDIO_DEVICE_FORMAT, AUDIO_DEVICE_CHANNELS, AUDIO_DEVICE_SAMPLE_RATE)
-//    if ma.decoder_init_file("Laser1.wav", &decoder_config, &ctx.first.decoder) != .SUCCESS {
-//        panic("Failed to load Laser1.wav")
-//    }
-//
-//    if ma.decoder_init_file("OrbitalColossus.mp3", &decoder_config, &ctx.last.decoder) != .SUCCESS {
-//        panic("Failed to load OrbitalColossus.mp3")
-//    }
-//
-//    ctx.last.playing = true
-//    ctx.last.paused = false
-//    ctx.last.frame_cursor_pos = 0
-//
-//    ctx.is_ready = true
+//    AUDIO.is_ready = true
+//    AUDIO.buffer.looping = true
 //}
 //
-//destroy :: proc() {
-//    if ctx.is_ready {
-//        ma.mutex_uninit(&ctx.lock)
-//        ma.device_uninit(&ctx.device)
-//
-//        ctx.is_ready = false
+//close :: proc() {
+//    if AUDIO.is_ready {
+//        AUDIO.is_ready = false
+//        ma.device_uninit(&AUDIO.device)
+//        ma.decoder_uninit(&AUDIO.buffer.decoder)
+//    } else {
+//        panic("AUDIO: Device could not be closed, not currently initialized")
 //    }
-//    for audio_buffer := ctx.first; audio_buffer != nil; audio_buffer = audio_buffer.next {
-//        free(audio_buffer)
-//    }
-//}
-//
-//is_audio_device_ready :: proc() -> bool {
-//    return ctx.is_ready
 //}
 //
 //set_master_volume :: proc(volume: f32) {
-//    ma.device_set_master_volume(&ctx.device, volume)
+//    ma.device_set_master_volume(&AUDIO.device, volume)
 //}
 //
-//play_sound :: proc() {
-//    ctx.first.playing = true
-//    ctx.first.paused = false
-//    ctx.first.frame_cursor_pos = 0
-//    ma.decoder_seek_to_pcm_frame(&ctx.first.decoder, 0)
+////toggle_pause :: proc() {
+////    AUDIO.paused = !AUDIO.paused
+////}
+//lock :: proc() {
+//    sync.mutex_lock(&AUDIO.lock)
 //}
+//
+//unlock :: proc() {
+//    sync.mutex_unlock(&AUDIO.lock)
+//}
+//
+//stop_music_stream :: proc() {
+//    AUDIO.buffer.paused = true
+//    ma.decoder_seek_to_pcm_frame(&AUDIO.buffer.decoder, 0)
+//}
+//
+//play_music_stream :: proc() {
+//    AUDIO.buffer.paused = false
+//}
+
+Audio_Id :: distinct int
+
+Audio_Buffer :: struct {
+    type: union {
+        ma.decoder,
+        ma.audio_buffer_ref,
+    },
+    sound_data: []f32,
+    sound_frame_count: u32,
+    sound_cursor: u32,
+    loop: bool,
+    is_playing: bool,
+    paused: bool,
+}
+
+Audio_Data :: struct {
+    device: ma.device,
+    buffers: [dynamic]Audio_Buffer,
+    mutex: sync.Mutex,
+    is_ready: bool
+}
+
+AUDIO: Audio_Data
+
+init :: proc(format := AUDIO_DEVICE_FORMAT, channels := AUDIO_DEVICE_CHANNELS, sample_rate := AUDIO_DEVICE_SAMPLE_RATE) {
+    config := ma.device_config_init(.playback)
+    config.playback.format = format
+    config.playback.channels = channels
+    config.sampleRate = sample_rate
+    config.dataCallback = ma.device_data_proc(data_callback)
+
+    if ma.device_init(nil, &config, &AUDIO.device) != .SUCCESS {
+        panic("AUDIO: Failed to initialize playback device")
+    }
+
+    if ma.device_start(&AUDIO.device) != .SUCCESS {
+        panic("AUDIO: Failed to start playback device")
+    }
+
+    AUDIO.buffers = make([dynamic]Audio_Buffer)
+    AUDIO.is_ready = true
+}
+
+load_sound :: proc(file: cstring) -> Audio_Id {
+    config := ma.decoder_config_init(.f32, 2, 44100)
+    sound_decoder: ma.decoder
+    if ma.decoder_init_file(file, &config, &sound_decoder) != .SUCCESS {
+        fmt.panicf("Failed to open the file %s", file)
+    }
+
+    frame_count: u64
+    ma.decoder_get_length_in_pcm_frames(&sound_decoder, &frame_count)
+
+    audio_buffer: Audio_Buffer
+    audio_buffer.sound_frame_count = u32(frame_count)
+
+    buffer_size := audio_buffer.sound_frame_count * sound_decoder.outputChannels
+    audio_buffer.sound_data = make([]f32, buffer_size)
+
+    ma.decoder_read_pcm_frames(&sound_decoder, raw_data(audio_buffer.sound_data), u64(audio_buffer.sound_frame_count), nil)
+    ma.decoder_uninit(&sound_decoder)
+
+    audio_buffer.type = ma.audio_buffer_ref{}
+    ma.audio_buffer_ref_init(.f32, 2, raw_data(audio_buffer.sound_data), u64(audio_buffer.sound_frame_count), &audio_buffer.type.(ma.audio_buffer_ref))
+
+    append(&AUDIO.buffers, audio_buffer)
+
+    return Audio_Id(len(AUDIO.buffers) - 1)
+}
+
+load_music :: proc(file: cstring) -> Audio_Id {
+    audio_buffer: Audio_Buffer
+    audio_buffer.type = ma.decoder{}
+    if ma.decoder_init_file(file, nil, &audio_buffer.type.(ma.decoder)) != .SUCCESS {
+        fmt.panicf("Failed to open the file %s", file)
+    }
+    append(&AUDIO.buffers, audio_buffer)
+
+    return Audio_Id(len(AUDIO.buffers) - 1)
+}
+
+data_callback :: proc(device: ^ma.device, output, input: rawptr, frame_count: u64) {
+    sync.mutex_lock(&AUDIO.mutex)
+    {
+        // TODO: decoder_read_pcm_frames overwrite the output so the sound never came out
+        for &buffer in AUDIO.buffers {
+            switch &data in buffer.type {
+            case ma.decoder:
+                if buffer.is_playing {
+                    frames_read: u64
+                    output := output
+                    ma.decoder_read_pcm_frames(&data, output, frame_count, &frames_read)
+
+                    if frames_read < frame_count && buffer.loop {
+                        ma.decoder_seek_to_pcm_frame(&data, 0)
+                    }
+                }
+            case ma.audio_buffer_ref:
+                if buffer.is_playing {
+                    frames_available := buffer.sound_frame_count - buffer.sound_cursor
+                    frames_to_mix := u32(frame_count)
+                    if frames_to_mix > frames_available {
+                        frames_to_mix = frames_available
+                    }
+
+                    output := mem.slice_ptr(cast([^]f32)(output), int(frames_to_mix * device.playback.channels))
+                    sound_data := buffer.sound_data[buffer.sound_cursor * device.playback.channels:]
+                    //for f : u32 = 0; f < frames_to_mix * device.playback.channels; f += 1 {
+                    for f in 0..<frames_to_mix * device.playback.channels {
+                        output[f] += sound_data[f] * 0.5
+                    }
+
+                    buffer.sound_cursor += frames_to_mix
+                    if buffer.sound_cursor >= buffer.sound_frame_count {
+                        buffer.is_playing = false
+                    }
+                }
+            }
+        }
+    }
+    sync.mutex_unlock(&AUDIO.mutex)
+}
+
+play_sound :: proc(id: Audio_Id) {
+    if _, ok := AUDIO.buffers[id].type.(ma.audio_buffer_ref); ok {
+        sync.mutex_lock(&AUDIO.mutex)
+        defer sync.mutex_unlock(&AUDIO.mutex)
+
+        AUDIO.buffers[id].is_playing = true
+        AUDIO.buffers[id].sound_cursor = 0
+    } else {
+        fmt.eprintln("it's not a sound id")
+    }
+}
+
+play_music :: proc(id: Audio_Id) {
+    if decoder, ok := AUDIO.buffers[id].type.(ma.decoder); ok {
+        sync.mutex_lock(&AUDIO.mutex)
+        defer sync.mutex_unlock(&AUDIO.mutex)
+
+        AUDIO.buffers[id].is_playing = true
+        ma.decoder_seek_to_pcm_frame(&decoder, 0)
+    } else {
+        fmt.eprintln("it's not a music id")
+    }
+}
+
+close :: proc() {
+    if AUDIO.is_ready {
+        AUDIO.is_ready = false
+        ma.device_uninit(&AUDIO.device)
+        for &buffer in AUDIO.buffers {
+            switch &data in buffer.type {
+            case ma.decoder:
+                ma.decoder_uninit(&data)
+            case ma.audio_buffer_ref:
+                delete(buffer.sound_data)
+            }
+        }
+        delete(AUDIO.buffers)
+    } else {
+        panic("AUDIO: Device could not be closed, not currently initialized")
+    }
+}
