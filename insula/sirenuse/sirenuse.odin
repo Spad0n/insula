@@ -145,7 +145,7 @@ init :: proc(format := AUDIO_DEVICE_FORMAT, channels := AUDIO_DEVICE_CHANNELS, s
 }
 
 load_sound :: proc(file: cstring) -> Audio_Id {
-    config := ma.decoder_config_init(.f32, 2, 44100)
+    config := ma.decoder_config_init(AUDIO_DEVICE_FORMAT, AUDIO_DEVICE_CHANNELS, AUDIO_DEVICE_SAMPLE_RATE)
     sound_decoder: ma.decoder
     if ma.decoder_init_file(file, &config, &sound_decoder) != .SUCCESS {
         fmt.panicf("Failed to open the file %s", file)
@@ -172,9 +172,11 @@ load_sound :: proc(file: cstring) -> Audio_Id {
 }
 
 load_music :: proc(file: cstring) -> Audio_Id {
+    config := ma.decoder_config_init(AUDIO_DEVICE_FORMAT, AUDIO_DEVICE_CHANNELS, AUDIO_DEVICE_SAMPLE_RATE)
+
     audio_buffer: Audio_Buffer
     audio_buffer.type = ma.decoder{}
-    if ma.decoder_init_file(file, nil, &audio_buffer.type.(ma.decoder)) != .SUCCESS {
+    if ma.decoder_init_file(file, &config, &audio_buffer.type.(ma.decoder)) != .SUCCESS {
         fmt.panicf("Failed to open the file %s", file)
     }
     append(&AUDIO.buffers, audio_buffer)
@@ -185,14 +187,18 @@ load_music :: proc(file: cstring) -> Audio_Id {
 data_callback :: proc(device: ^ma.device, output, input: rawptr, frame_count: u64) {
     sync.mutex_lock(&AUDIO.mutex)
     {
-        // TODO: decoder_read_pcm_frames overwrite the output so the sound never came out
         for &buffer in AUDIO.buffers {
             switch &data in buffer.type {
             case ma.decoder:
                 if buffer.is_playing {
                     frames_read: u64
-                    output := output
-                    ma.decoder_read_pcm_frames(&data, output, frame_count, &frames_read)
+                    out: [1024 * AUDIO_DEVICE_CHANNELS]f32
+                    ma.decoder_read_pcm_frames(&data, raw_data(out[:]), frame_count, &frames_read)
+
+                    output := mem.slice_ptr(cast([^]f32)(output), int(u32(frame_count) * device.playback.channels))
+                    for f in 0..<(u32(frame_count) * device.playback.channels) {
+                        output[f] += out[f]
+                    }
 
                     if frames_read < frame_count && buffer.loop {
                         ma.decoder_seek_to_pcm_frame(&data, 0)
@@ -208,7 +214,6 @@ data_callback :: proc(device: ^ma.device, output, input: rawptr, frame_count: u6
 
                     output := mem.slice_ptr(cast([^]f32)(output), int(frames_to_mix * device.playback.channels))
                     sound_data := buffer.sound_data[buffer.sound_cursor * device.playback.channels:]
-                    //for f : u32 = 0; f < frames_to_mix * device.playback.channels; f += 1 {
                     for f in 0..<frames_to_mix * device.playback.channels {
                         output[f] += sound_data[f] * 0.5
                     }
