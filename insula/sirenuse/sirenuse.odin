@@ -9,99 +9,7 @@ AUDIO_DEVICE_CHANNELS    : u32       : 2
 AUDIO_DEVICE_SAMPLE_RATE : u32       : 44100
 AUDIO_DEVICE_FORMAT      : ma.format : .f32
 
-
-//Audio_Buffer :: struct {
-//    decoder: ma.decoder,
-//    paused: bool,
-//    looping: bool,
-//}
-//
-//AudioData :: struct {
-//    device: ma.device,
-//    buffer: Audio_Buffer,
-//    is_ready: bool,
-//    lock: sync.Mutex
-//}
-//
-//@(private) AUDIO: AudioData
-//
-//data_callback :: proc(device: ^ma.device, output, input: rawptr, frame_count: u64) {
-//    sync.mutex_lock(&AUDIO.lock)
-//    {
-//        if (AUDIO.buffer.paused) do return
-//
-//        frames_read: u64
-//
-//        ma.decoder_read_pcm_frames(&AUDIO.buffer.decoder, output, frame_count, &frames_read)
-//
-//        // check if need to be looped
-//        if frames_read < frame_count && AUDIO.buffer.looping {
-//            ma.decoder_seek_to_pcm_frame(&AUDIO.buffer.decoder, 0)
-//        }
-//    }
-//    sync.mutex_unlock(&AUDIO.lock)
-//}
-//
-//init :: proc(file_path: cstring) {
-//    // decoder part
-//    if ma.decoder_init_file(file_path, nil, &AUDIO.buffer.decoder) != .SUCCESS {
-//        panic("Could not load file")
-//    }
-//
-//    // device part
-//    config := ma.device_config_init(.playback)
-//    config.playback.format = AUDIO_DEVICE_FORMAT
-//    config.playback.channels = AUDIO_DEVICE_CHANNELS
-//    config.sampleRate = AUDIO_DEVICE_SAMPLE_RATE
-//    config.dataCallback = ma.device_data_proc(data_callback)
-//
-//    if ma.device_init(nil, &config, &AUDIO.device) != .SUCCESS {
-//        panic("AUDIO: Failed to initialize playback device")
-//    }
-//
-//    if ma.device_start(&AUDIO.device) != .SUCCESS {
-//        panic("AUDIO: Failed to start playback device")
-//    }
-//
-//    AUDIO.is_ready = true
-//    AUDIO.buffer.looping = true
-//}
-//
-//close :: proc() {
-//    if AUDIO.is_ready {
-//        AUDIO.is_ready = false
-//        ma.device_uninit(&AUDIO.device)
-//        ma.decoder_uninit(&AUDIO.buffer.decoder)
-//    } else {
-//        panic("AUDIO: Device could not be closed, not currently initialized")
-//    }
-//}
-//
-//set_master_volume :: proc(volume: f32) {
-//    ma.device_set_master_volume(&AUDIO.device, volume)
-//}
-//
-////toggle_pause :: proc() {
-////    AUDIO.paused = !AUDIO.paused
-////}
-//lock :: proc() {
-//    sync.mutex_lock(&AUDIO.lock)
-//}
-//
-//unlock :: proc() {
-//    sync.mutex_unlock(&AUDIO.lock)
-//}
-//
-//stop_music_stream :: proc() {
-//    AUDIO.buffer.paused = true
-//    ma.decoder_seek_to_pcm_frame(&AUDIO.buffer.decoder, 0)
-//}
-//
-//play_music_stream :: proc() {
-//    AUDIO.buffer.paused = false
-//}
-
-Audio_Id :: distinct int
+Id :: distinct int
 
 Audio_Buffer :: struct {
     type: union {
@@ -125,11 +33,11 @@ Audio_Data :: struct {
 
 AUDIO: Audio_Data
 
-init :: proc(format := AUDIO_DEVICE_FORMAT, channels := AUDIO_DEVICE_CHANNELS, sample_rate := AUDIO_DEVICE_SAMPLE_RATE) {
+init :: proc() {
     config := ma.device_config_init(.playback)
-    config.playback.format = format
-    config.playback.channels = channels
-    config.sampleRate = sample_rate
+    config.playback.format = AUDIO_DEVICE_FORMAT
+    config.playback.channels = AUDIO_DEVICE_CHANNELS
+    config.sampleRate = AUDIO_DEVICE_SAMPLE_RATE
     config.dataCallback = ma.device_data_proc(data_callback)
 
     if ma.device_init(nil, &config, &AUDIO.device) != .SUCCESS {
@@ -144,7 +52,7 @@ init :: proc(format := AUDIO_DEVICE_FORMAT, channels := AUDIO_DEVICE_CHANNELS, s
     AUDIO.is_ready = true
 }
 
-load_sound :: proc(file: cstring) -> Audio_Id {
+load_sound :: proc(file: cstring) -> Id {
     config := ma.decoder_config_init(AUDIO_DEVICE_FORMAT, AUDIO_DEVICE_CHANNELS, AUDIO_DEVICE_SAMPLE_RATE)
     sound_decoder: ma.decoder
     if ma.decoder_init_file(file, &config, &sound_decoder) != .SUCCESS {
@@ -168,10 +76,10 @@ load_sound :: proc(file: cstring) -> Audio_Id {
 
     append(&AUDIO.buffers, audio_buffer)
 
-    return Audio_Id(len(AUDIO.buffers) - 1)
+    return Id(len(AUDIO.buffers) - 1)
 }
 
-load_music :: proc(file: cstring) -> Audio_Id {
+load_music :: proc(file: cstring) -> Id {
     config := ma.decoder_config_init(AUDIO_DEVICE_FORMAT, AUDIO_DEVICE_CHANNELS, AUDIO_DEVICE_SAMPLE_RATE)
 
     audio_buffer: Audio_Buffer
@@ -181,7 +89,7 @@ load_music :: proc(file: cstring) -> Audio_Id {
     }
     append(&AUDIO.buffers, audio_buffer)
 
-    return Audio_Id(len(AUDIO.buffers) - 1)
+    return Id(len(AUDIO.buffers) - 1)
 }
 
 data_callback :: proc(device: ^ma.device, output, input: rawptr, frame_count: u64) {
@@ -229,7 +137,7 @@ data_callback :: proc(device: ^ma.device, output, input: rawptr, frame_count: u6
     sync.mutex_unlock(&AUDIO.mutex)
 }
 
-play_sound :: proc(id: Audio_Id) {
+play_sound :: proc(id: Id) {
     if _, ok := AUDIO.buffers[id].type.(ma.audio_buffer_ref); ok {
         sync.mutex_lock(&AUDIO.mutex)
         defer sync.mutex_unlock(&AUDIO.mutex)
@@ -241,7 +149,7 @@ play_sound :: proc(id: Audio_Id) {
     }
 }
 
-play_music :: proc(id: Audio_Id) {
+play_music :: proc(id: Id) {
     if decoder, ok := AUDIO.buffers[id].type.(ma.decoder); ok {
         sync.mutex_lock(&AUDIO.mutex)
         defer sync.mutex_unlock(&AUDIO.mutex)
