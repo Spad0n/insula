@@ -18,7 +18,7 @@ Insula includes the following libraries by default:
 - **Avalon**: Manage window creation and handling.
   - 🚧 Missing features: Gamepad support is not yet available.
 - **Sirenuse**: Provides audio processing and playback.
-  - 🚧 Status: Not implemented yet.
+  - 🚧 Status: Basic implementation.
   
 ## Getting Started
 
