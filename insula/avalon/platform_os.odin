@@ -5,7 +5,6 @@ import     "vendor:sdl3"
 import     "core:fmt"
 import glm "core:math/linalg/glsl"
 import     "core:os"
-import     "base:runtime"
 
 HIGH_DPI :: #config(HIGH_DPI, false)
 GL_MAJOR_VERSION, GL_MINOR_VERSION :: 3, 3

@@ -88,6 +88,7 @@ load_music :: proc(file: cstring) -> Id {
     return Id(len(AUDIO.buffers) - 1)
 }
 
+@(private)
 data_callback :: proc(device: ^ma.device, output, input: rawptr, frame_count: u64) {
     sync.mutex_lock(&AUDIO.mutex)
     defer sync.mutex_unlock(&AUDIO.mutex)

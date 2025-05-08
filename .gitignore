@@ -1,6 +1,5 @@
 *.bin
 *.wasm
-*.odin
 *.png
 *.jpg
 *.org
