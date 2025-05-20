@@ -1,3 +1,4 @@
+#+build !js
 package sirenuse
 
 import ma "vendor:miniaudio"
