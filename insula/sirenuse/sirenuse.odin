@@ -162,6 +162,7 @@ play_music :: proc(id: Id) {
 close :: proc() {
     if AUDIO.is_ready {
         AUDIO.is_ready = false
+        ma.device_stop(&AUDIO.device)
         for &buffer in AUDIO.buffers {
             switch &data in buffer.type {
             case ma.decoder:

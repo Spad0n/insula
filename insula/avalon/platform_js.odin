@@ -29,6 +29,9 @@ events_to_handle :: [?]js.Event_Kind{
         .Scroll,
 }
 
+gl_set_proc_address :: proc(p: rawptr, name: cstring) {
+}
+
 platform_init :: proc(width, height: i32, title: cstring = " ", location := #caller_location) {
     g_ctx.platform_data.title = title
     g_ctx.platform_data.screen_width = width
