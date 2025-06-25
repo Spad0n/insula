@@ -26,44 +26,42 @@ Here's a simple example of how to use Insula to create a window and render basic
 ```odin
 package main
 
-import av "insula/avalon" // For window management
-import og "insula/ogygia" // For 2D rendering
-import    "core:fmt"
+import ins "insula"
+import     "core:fmt"
 
 SCREEN_WIDTH  :: 800
 SCREEN_HEIGHT :: 600
 
-fini :: proc(ctx: ^av.Context) {
-    og.destroy()
+fini :: proc(ctx: ^ins.Context) {
+    ins.render_destroy()
 }
 
-update :: proc(ctx: ^av.Context, dt: f32) {
-    og.draw_rect({10, 10}, {100, 100}, color = og.RED)
-    og.draw_all()
+update :: proc(ctx: ^ins.Context, dt: f32) {
+    ins.draw_rect({10, 10}, {100, 100}, color = ins.RED)
+    ins.draw_all()
 }
 
-init :: proc(ctx: ^av.Context) -> bool {
-    // check at compile time if targetting desktop or web
+init :: proc(ctx: ^ins.Context) -> bool {
     when ODIN_OS != .JS {
-        og.load_extensions(av.gl_set_proc_address)
+        ins.load_extensions(ins.gl_set_proc_address)
     } else {
-        og.load_extensions("game")
+        ins.load_extensions("game")
     }
 	
-    if !og.init(ctx.screen_width, ctx.screen_height) {
+    if !ins.render_init(ctx.screen_width, ctx.screen_height) {
         fmt.eprintln("Could not init GL context for some reason")
         return false
     }
-	
-    og.set_background(og.WHITE)
+
+    ins.set_background(ins.WHITE)
     return true
 }
 
 main :: proc() {
-    if !av.init(SCREEN_WIDTH, SCREEN_HEIGHT, "Hello world", init, update, fini) {
+    if !ins.init(SCREEN_WIDTH, SCREEN_HEIGHT, "Hello world", init, update, fini) {
         panic("Something went wrong")
     }
-    av.start()
+    ins.start()
 }
 ```
 
