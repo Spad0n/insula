@@ -22,13 +22,13 @@ BUFFER_INVALID       :: HANDLE_INVALID
 FRAMEBUFFER_INVALID  :: HANDLE_INVALID
 RENDERBUFFER_INVALID :: HANDLE_INVALID
 
-@(private="file")
+@(private="file", rodata)
 texture_filter_map := [Texture_Filter]i32{
         .Linear = i32(gl.LINEAR),
         .Nearest = i32(gl.NEAREST),
 }
 
-@(private="file")
+@(private="file", rodata)
 texture_wrap_map := [Texture_Wrap]i32{
 	.Clamp_To_Edge   = i32(gl.CLAMP_TO_EDGE),
 	.Repeat          = i32(gl.REPEAT),
