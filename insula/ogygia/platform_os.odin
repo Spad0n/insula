@@ -37,6 +37,15 @@ texture_wrap_map := [Texture_Wrap]i32{
 
 load_extensions :: proc(set_proc_address: proc(p: rawptr, name: cstring)) {
     gl.load_up_to(GL_MAJOR_VERSION, GL_MINOR_VERSION, set_proc_address)
+    when ODIN_DEBUG {
+        version := cast(cstring) gl.GetString(gl.VERSION)
+        renderer := cast(cstring) gl.GetString(gl.RENDERER)
+        glsl := cast(cstring) gl.GetString(gl.SHADING_LANGUAGE_VERSION)
+        fmt.println("=== INFO GRAPHICS CONTEXT ===")
+        fmt.println("Version GL   :", version)
+        fmt.println("Renderer     :", renderer)
+        fmt.println("Version GLSL :", glsl)
+    }
 }
 
 platform_init :: proc(vert_src: string, frag_src: string) -> (ok: bool) {
@@ -276,7 +285,8 @@ platform_draw :: proc() -> bool {
     return true
 }
 
-shader_vert :: `#version 330
+shader_vert :: `#version 300 es
+precision highp float;
 
 layout (location = 0) in vec3 vertexPosition;
 layout (location = 1) in vec4 vertexColor;
@@ -296,7 +306,9 @@ void main() {
 }
 `
 
-shader_frag :: `#version 330
+shader_frag :: `#version 300 es
+precision highp float;
+
 in vec2 fragTexCoord;
 in vec4 fragColor;
 out vec4 finalColor;

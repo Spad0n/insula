@@ -7,7 +7,7 @@ import glm "core:math/linalg/glsl"
 import     "core:os"
 
 HIGH_DPI :: #config(HIGH_DPI, false)
-GL_MAJOR_VERSION, GL_MINOR_VERSION :: 3, 3
+GL_MAJOR_VERSION, GL_MINOR_VERSION :: 3, 0
 
 gl_set_proc_address :: sdl3.gl_set_proc_address
 
@@ -38,6 +38,10 @@ platform_init :: proc(width, height: i32, title: cstring, location := #caller_lo
         os.exit(1)
     }
 
+    sdl3.GL_SetAttribute(.CONTEXT_PROFILE_MASK, i32(sdl3.GL_CONTEXT_PROFILE_ES))
+    sdl3.GL_SetAttribute(.CONTEXT_MAJOR_VERSION, GL_MAJOR_VERSION)
+    sdl3.GL_SetAttribute(.CONTEXT_MINOR_VERSION, GL_MINOR_VERSION)
+
     window := sdl3.CreateWindow(title, width, height, {.OPENGL})
     if window == nil {
         fmt.eprintln(location, sdl3.GetError())
@@ -45,8 +49,6 @@ platform_init :: proc(width, height: i32, title: cstring, location := #caller_lo
     }
 
     sdl3.SetWindowResizable(window, false)
-    sdl3.GL_SetAttribute(.CONTEXT_MAJOR_VERSION, GL_MAJOR_VERSION)
-    sdl3.GL_SetAttribute(.CONTEXT_MINOR_VERSION, GL_MINOR_VERSION)
 
     g_ctx.platform_data.glctx = sdl3.GL_CreateContext(window)
     if g_ctx.platform_data.glctx == nil {

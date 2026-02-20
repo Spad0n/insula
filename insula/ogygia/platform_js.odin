@@ -1,9 +1,9 @@
 package ogygia
 
 import glm "core:math/linalg/glsl"
-import gl  "WebGL"
 import     "core:image"
 import     "core:bytes"
+import gl  "vendor:wasm/WebGL"
 
 VertexArrayObject :: gl.VertexArrayObject
 Shader            :: gl.Program
@@ -184,7 +184,7 @@ platform_draw :: proc() -> bool {
     gl.CullFace(gl.BACK)
     gl.FrontFace(gl.CW)
     gl.BlendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
-    gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT)
+    gl.Clear(u32(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT))
 
     prev_draw_call: Draw_Call
     prev_draw_call.shader  = SHADER_INVALID
